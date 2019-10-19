@@ -124,7 +124,7 @@ void work(struct BLOCK *table, struct myTime virtual){
 }
 
 int main(int argc, char *argv[]) {
-    
+
 
     int timeInSec = 5;                                                               //default timer is set to 5 seconds
     int maxChildren = 5;                                                       //default max child processes is set to 5
