@@ -16,9 +16,8 @@
 #include <signal.h>
 #include <sys/mman.h>
 #include <sys/ipc.h>
+#include <sys/msg.h>
 #include <sys/shm.h>
-#include <semaphore.h>
-#include <pthread.h>
 
 /*holy cow look at all these headers!*/
 
@@ -27,14 +26,20 @@ struct myTime{                                                                  
     int nanoseconds;
 };
 
+struct mesg_buffer {
+    long mesg_type;
+    char mesg_text[100];
+} message;
+
 struct BLOCK
 {
-    struct BLOCK *link;  /* forward link for linked list */
     int CPUTime;
     int sysTime;
     int burstTime;
     int simPid;
     int priority;
+    int job;
+    int run;
 
 };
 
