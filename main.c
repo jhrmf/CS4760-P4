@@ -2,10 +2,7 @@
 
 typedef struct node {
     int data;
-
-    // Lower values indicate higher priority
     int priority;
-
     struct node* next;
 
 } Node;
@@ -60,25 +57,18 @@ void enqueue(Node** head, int d, int p)
     }
 }
 
-const int getRandom(const int max, const int min){
-    int randomNumber = ((rand() % (max + 1 - min)) + min);
-    return randomNumber;
-}
-int getSeconds(){                               //function for retrieving the second in our time stored in shared memory
-    key_t key = 66;
-    int secID = shmget(key, 2048, 0444);
-    char *tempTime = (char*) shmat(secID, (void*)0, 0);
-    int seconds = atoi(tempTime);
-    shmdt(tempTime);
-    return seconds;
-}
-float getNano(){                            //function for retrieving the nanosecond our in time stored in shared memory
-    key_t key = 67;
-    int nanoID = shmget(key, 2048, 0444);
-    char *tempTime = (char*) shmat(nanoID, (void*)0, 0);
-    float nano = (float)(atoi(tempTime)) / 1000000000;
-    shmdt(tempTime);
-    return nano;
+struct myTime updateTimeAfterProcess(struct myTime virtual, float quantum){
+    while(quantum != 0){
+        if(quantum >= 1){
+            virtual.seconds++;
+            quantum--;
+        }
+        else{
+            virtual.nanoseconds += quantum;
+            break;
+        }
+    }
+    return virtual;
 }
 
 struct myTime updateClock(struct myTime virtual){     //function for updating the system clock's seconds and nanoseconds
@@ -145,43 +135,6 @@ static int setupitimer(int n) {                                             /* s
     return (setitimer(ITIMER_PROF, &value, NULL));
 }
 
-void work(struct BLOCK *table, struct myTime virtual){
-    srand(time(0));
-    int job = getRandom(3, 0);
-    printf("Job: %d \n", job);
-    if(job == 0){
-        printf("Process terminating at %d : %f\n", getSeconds(), getNano());
-    }
-    if(job == 1){
-        while(1){
-            virtual = updateClock(virtual);
-            //if time == quantum, terminate break;
-            break;
-        }
-    }
-    if(job == 2){
-        int r = getRandom(5, 0);
-        int s = getRandom(1000, 0);
-        float difference = ((float)r + ((float)s / 10000));
-        int currentSecond = virtual.seconds;
-        float currentNano = virtual.nanoseconds/1000000000;
-        while(1){
-            virtual = updateClock(virtual);
-            if(((getSeconds() + getNano()) - (float)(currentSecond + currentNano)) >= difference){
-                printf("Waited for event that lasted %f\n", difference);
-                break;
-            }
-        }
-    }
-    if(job == 3){
-        int p = getRandom(100, 1);
-        float percentage = p/100;
-        while(1){
-            //run for percentage of quantum then block
-            break;
-        }
-    }
-}
 
 int main(int argc, char *argv[]) {
 
@@ -231,9 +184,10 @@ int main(int argc, char *argv[]) {
                 key_t key = ftok("oss", 70);
                 msgid = msgget(key, 0666 | IPC_CREAT);
                 message.mesg_type = 1;
-                strcpy(message.mesg_text, "sent");
+                strcpy(message.mesg_text, "PROCESS ENTERED SYSTEM");
+                message.timeQuantum = 1;
                 msgsnd(msgid, &message, sizeof(message), 0);
-                i++;
+                printf("----------NEW PROCESS----------\n");
                 childPid = fork();
             }
             if(childPid == 0){
@@ -242,13 +196,12 @@ int main(int argc, char *argv[]) {
                 table[i].sysTime = (float)((float)virtual.seconds + (float)(virtual.nanoseconds/1000000000));
                 table[i].burstTime = 0.0;
                 table[i].simPid = getpid();
-                work(table, virtual);
                 shmdt(table);
-                virtual = updateClock(virtual);
                 execl("./userP", NULL);
                 exit(0);
             }
             else{
+                i++;
                 sleep(1);
                 while (strcmp(message.mesg_text, "sent") == 0 && virtual.nanoseconds <= 10) {
                     msgrcv(msgid, &message, sizeof(message), 1, 0);
@@ -258,10 +211,15 @@ int main(int argc, char *argv[]) {
                         virtual.seconds++;
                     }
                 }
+                printf("Time Prior to Process: %f \n",(float)(virtual.seconds + (float)(virtual.nanoseconds/1000000000)));
+                printf("Time of Process: %f\n", message.timeQuantum);
+                virtual = updateTimeAfterProcess(virtual, message.timeQuantum);
+                printf("Updated Time: %f\n", (float)(virtual.seconds + (float)(virtual.nanoseconds/1000000000)));
             }
 
-        }
+        }else{
             virtual = updateClock(virtual);
+        }
     }
 
     shmctl(secID, IPC_RMID, NULL);                                                //delete the shared memory for seconds

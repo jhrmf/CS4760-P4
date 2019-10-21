@@ -31,6 +31,7 @@ struct myTime{                                                                  
 
 struct mesg_buffer {
     long mesg_type;
+    float timeQuantum;
     char mesg_text[100];
 } message;
 
@@ -48,4 +49,26 @@ struct BLOCK
 struct myTime virtual;                                                             //struct for holding the virtual time
 struct myTime tempTime;
 struct BLOCK *table;
+
+const int getRandom(const int max, const int min){
+    int randomNumber = ((rand() % (max + 1 - min)) + min);
+    return randomNumber;
+}
+int getSeconds(){                               //function for retrieving the second in our time stored in shared memory
+    key_t key = 66;
+    int secID = shmget(key, 2048, 0444);
+    char *tempTime = (char*) shmat(secID, (void*)0, 0);
+    int seconds = atoi(tempTime);
+    shmdt(tempTime);
+    return seconds;
+}
+float getNano(){                            //function for retrieving the nanosecond our in time stored in shared memory
+    key_t key = 67;
+    int nanoID = shmget(key, 2048, 0444);
+    char *tempTime = (char*) shmat(nanoID, (void*)0, 0);
+    float nano = (float)(atoi(tempTime)) / 1000000000;
+    shmdt(tempTime);
+    return nano;
+}
+
 #endif
