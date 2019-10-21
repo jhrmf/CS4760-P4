@@ -21,6 +21,9 @@
 
 /*holy cow look at all these headers!*/
 
+#define ALPHA 3
+#define BETA 2
+
 struct myTime{                                                                             //struct for our virtual time
     int seconds;
     int nanoseconds;
@@ -33,11 +36,10 @@ struct mesg_buffer {
 
 struct BLOCK
 {
-    int CPUTime;
-    int sysTime;
-    int burstTime;
+    float CPUTime;
+    float sysTime;
+    float burstTime;
     int simPid;
-    int priority;
     int job;
     int run;
 

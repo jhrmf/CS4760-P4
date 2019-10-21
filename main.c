@@ -1,5 +1,64 @@
 #include "sharedMem.h"
 
+typedef struct node {
+    int data;
+
+    // Lower values indicate higher priority
+    int priority;
+
+    struct node* next;
+
+} Node;
+
+Node* newNode(int d, int p)
+{
+    Node* temp = (Node*)malloc(sizeof(Node));
+    temp->data = d;
+    temp->priority = p;
+    temp->next = NULL;
+
+    return temp;
+}
+
+void dequeue(Node** head)
+{
+    Node* temp = *head;
+    (*head) = (*head)->next;
+    free(temp);
+}
+
+// Function to push according to priority
+void enqueue(Node** head, int d, int p)
+{
+    Node* start = (*head);
+
+    // Create new Node
+    Node* temp = newNode(d, p);
+
+    // Special Case: The head of list has lesser
+    // priority than new node. So insert new
+    // node before head node and change head node.
+    if ((*head)->priority > p) {
+
+        // Insert New Node before head
+        temp->next = *head;
+        (*head) = temp;
+    }
+    else {
+
+        // Traverse the list and find a
+        // position to insert new node
+        while (start->next != NULL &&
+               start->next->priority < p) {
+            start = start->next;
+        }
+
+        // Either at the ends of the list
+        // or at required position
+        temp->next = start->next;
+        start->next = temp;
+    }
+}
 
 const int getRandom(const int max, const int min){
     int randomNumber = ((rand() % (max + 1 - min)) + min);
@@ -28,6 +87,8 @@ struct myTime updateClock(struct myTime virtual){     //function for updating th
         virtual.seconds++;                                                             //increment the seconds counter
         virtual.nanoseconds = virtual.nanoseconds - 1000000000;             //decrement the nanosecond count by a second
     }
+    int tempNano = virtual.nanoseconds;
+    int tempSec = virtual.seconds;
     key_t secKey = 66;                                         //the key for the shared memory holding the seconds is 66
     key_t nanoKey = 67;                                    //the key for the shared memory holding the nanoseconds is 67
     int secID = shmget(secKey, 2048, 0666|IPC_CREAT);    //access the shared memory with file write and read permissions
@@ -41,19 +102,18 @@ struct myTime updateClock(struct myTime virtual){     //function for updating th
     char *nanoStr = (char *) shmat(nanoID, (void *) 0, 0);   //ptr to the shared memory location for nanoseconds
     strcpy(nanoStr, temp2);                                 //copy the nanoseconds to the shared memory location
     shmdt(nanoStr);                                                     //detach from the shared memory location
-
+    virtual.nanoseconds = tempNano;
+    virtual.seconds = tempSec;
     return virtual;                                           //return the new time stored in the virtual time structure
 }
 
 float getLaunchTime(int maxTimeBetweenNewProcsNS, int maxTimeBetweenNewProcsSecs){
     float launchTime;
     if(maxTimeBetweenNewProcsNS != 0){
-        srand((unsigned)time(0));
-        launchTime = (rand() % maxTimeBetweenNewProcsNS) / 1000000000;
+        launchTime = getRandom(maxTimeBetweenNewProcsNS, 0) / 1000000000;
     }
     if( maxTimeBetweenNewProcsSecs != 0){
-        srand((unsigned)time(0));
-        launchTime = launchTime + (rand() % maxTimeBetweenNewProcsSecs);
+        launchTime = launchTime + getRandom(maxTimeBetweenNewProcsSecs, 0);
     }
     return launchTime;
 }
@@ -126,7 +186,7 @@ void work(struct BLOCK *table, struct myTime virtual){
 int main(int argc, char *argv[]) {
 
 
-    int timeInSec = 5;                                                               //default timer is set to 5 seconds
+    int timeInSec = 10;                                                               //default timer is set to 5 seconds
     int maxChildren = 5;                                                       //default max child processes is set to 5
     int i = 0;
     int maxTimeBetweenNewProcsNS = 1000000000, maxTimeBetweenNewProcsSecs = 0;
@@ -159,7 +219,7 @@ int main(int argc, char *argv[]) {
     shmctl(dataId, IPC_RMID, NULL);
 */
     int msgid;
-    while(virtual.seconds < 10 || childCount <= 100){   //this do while loop ends if seconds < 3 or 100 children exist
+    while(virtual.seconds < 5 && childCount <= 100){   //this do while loop ends if seconds < 3 or 100 children exist
         tempTime = updateClock(tempTime);
         float checkTime = tempTime.seconds + ((float)tempTime.nanoseconds/1000000000);
         if(checkTime >= 1) {
@@ -168,33 +228,35 @@ int main(int argc, char *argv[]) {
             tempTime.nanoseconds = 0;
 
             if (i < 18) {
+                key_t key = ftok("oss", 70);
+                msgid = msgget(key, 0666 | IPC_CREAT);
+                message.mesg_type = 1;
+                strcpy(message.mesg_text, "sent");
+                msgsnd(msgid, &message, sizeof(message), 0);
+                i++;
+                childPid = fork();
+            }
+            if(childPid == 0){
                 table = shmat(dataId, NULL, 0);
-                table[i].CPUTime = 0;
-                table[i].sysTime = 0;
-                table[i].burstTime = 0;
-                table[i].simPid = i + 100;
-                table[i].priority = 0;
+                table[i].CPUTime = 0.0;
+                table[i].sysTime = (float)((float)virtual.seconds + (float)(virtual.nanoseconds/1000000000));
+                table[i].burstTime = 0.0;
+                table[i].simPid = getpid();
                 work(table, virtual);
                 shmdt(table);
-                i++;
-            }
-
-            key_t key = ftok("oss", 70);
-            msgid = msgget(key, 0666 | IPC_CREAT);
-            message.mesg_type = 1;
-            strcpy(message.mesg_text, "sent");
-            msgsnd(msgid, &message, sizeof(message), 0);
-            childPid = fork();
-            if(childPid == 0){
                 virtual = updateClock(virtual);
                 execl("./userP", NULL);
                 exit(0);
             }
             else{
                 sleep(1);
-                while (strcmp(message.mesg_text, "sent") == 0) {
+                while (strcmp(message.mesg_text, "sent") == 0 && virtual.nanoseconds <= 10) {
                     msgrcv(msgid, &message, sizeof(message), 1, 0);
                     virtual.nanoseconds++;
+                    if(virtual.nanoseconds >= 1000000000){
+                        virtual.nanoseconds -= 1000000000;
+                        virtual.seconds++;
+                    }
                 }
             }
 
@@ -208,11 +270,10 @@ int main(int argc, char *argv[]) {
 
     table = shmat(dataId, NULL, 0);
     for(i=18; i > -1; i--){
-        printf("CPU Time: %d\n", table[i].CPUTime);
-        printf("System Time: %d\n", table[i].sysTime);
-        printf("Burst Time: %d\n", table[i].burstTime);
+        printf("CPU Time: %f\n", table[i].CPUTime);
+        printf("System Time: %f\n", table[i].sysTime);
+        printf("Burst Time: %f\n", table[i].burstTime);
         printf("Simulated PID: %d\n", table[i].simPid);
-        printf("Priority: %d\n", table[i].priority);
         printf("\n");
     }
     shmdt(table);
