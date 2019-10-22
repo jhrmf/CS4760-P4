@@ -48,6 +48,7 @@ struct BLOCK
 
 struct myTime virtual;                                                             //struct for holding the virtual time
 struct myTime tempTime;
+struct myTime local;
 struct BLOCK *table;
 
 const int getRandom(const int max, const int min){

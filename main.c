@@ -1,61 +1,5 @@
 #include "sharedMem.h"
-
-typedef struct node {
-    int data;
-    int priority;
-    struct node* next;
-
-} Node;
-
-Node* newNode(int d, int p)
-{
-    Node* temp = (Node*)malloc(sizeof(Node));
-    temp->data = d;
-    temp->priority = p;
-    temp->next = NULL;
-
-    return temp;
-}
-
-void dequeue(Node** head)
-{
-    Node* temp = *head;
-    (*head) = (*head)->next;
-    free(temp);
-}
-
-// Function to push according to priority
-void enqueue(Node** head, int d, int p)
-{
-    Node* start = (*head);
-
-    // Create new Node
-    Node* temp = newNode(d, p);
-
-    // Special Case: The head of list has lesser
-    // priority than new node. So insert new
-    // node before head node and change head node.
-    if ((*head)->priority > p) {
-
-        // Insert New Node before head
-        temp->next = *head;
-        (*head) = temp;
-    }
-    else {
-
-        // Traverse the list and find a
-        // position to insert new node
-        while (start->next != NULL &&
-               start->next->priority < p) {
-            start = start->next;
-        }
-
-        // Either at the ends of the list
-        // or at required position
-        temp->next = start->next;
-        start->next = temp;
-    }
-}
+#include "queue.h"
 
 struct myTime updateTimeAfterProcess(struct myTime virtual, float quantum){
     while(quantum != 0){
@@ -138,11 +82,11 @@ static int setupitimer(int n) {                                             /* s
 
 int main(int argc, char *argv[]) {
 
-
+    struct Queue *waiting = createQueue();
     int timeInSec = 10;                                                               //default timer is set to 5 seconds
     int maxChildren = 5;                                                       //default max child processes is set to 5
     int i = 0;
-    int maxTimeBetweenNewProcsNS = 1000000000, maxTimeBetweenNewProcsSecs = 0;
+    int maxTimeBetweenNewProcsNS = 999999999, maxTimeBetweenNewProcsSecs = 2;
     float launchItUp = getLaunchTime(maxTimeBetweenNewProcsNS, maxTimeBetweenNewProcsSecs);
     char fileName[100] = "logFile";                                            //default log file name is set to logFile
     virtual.nanoseconds = 0;                                                            //nanosecond counter is set to 0
@@ -175,7 +119,7 @@ int main(int argc, char *argv[]) {
     while(virtual.seconds < 5 && childCount <= 100){   //this do while loop ends if seconds < 3 or 100 children exist
         tempTime = updateClock(tempTime);
         float checkTime = tempTime.seconds + ((float)tempTime.nanoseconds/1000000000);
-        if(checkTime >= 1) {
+        if(checkTime >= (float)(getRandom(maxTimeBetweenNewProcsSecs, 0) + (float)(getRandom(maxTimeBetweenNewProcsNS, 0)/1000000000))) {
             printf("Launched at %f!\n", checkTime);
             tempTime.seconds = 0;
             tempTime.nanoseconds = 0;
@@ -185,11 +129,12 @@ int main(int argc, char *argv[]) {
                 msgid = msgget(key, 0666 | IPC_CREAT);
                 message.mesg_type = 1;
                 strcpy(message.mesg_text, "PROCESS ENTERED SYSTEM");
-                message.timeQuantum = 1;
+                message.timeQuantum = 1.2;
                 msgsnd(msgid, &message, sizeof(message), 0);
                 printf("----------NEW PROCESS----------\n");
                 childPid = fork();
             }
+
             if(childPid == 0){
                 table = shmat(dataId, NULL, 0);
                 table[i].CPUTime = 0.0;
@@ -197,6 +142,7 @@ int main(int argc, char *argv[]) {
                 table[i].burstTime = 0.0;
                 table[i].simPid = getpid();
                 shmdt(table);
+                enqueue(waiting, table[i].simPid);
                 execl("./userP", NULL);
                 exit(0);
             }
@@ -211,10 +157,11 @@ int main(int argc, char *argv[]) {
                         virtual.seconds++;
                     }
                 }
-                printf("Time Prior to Process: %f \n",(float)(virtual.seconds + (float)(virtual.nanoseconds/1000000000)));
+                printf("Time Prior to Process: %f \n",(float)((float)virtual.seconds + (float)(virtual.nanoseconds/1000000000)));
                 printf("Time of Process: %f\n", message.timeQuantum);
                 virtual = updateTimeAfterProcess(virtual, message.timeQuantum);
-                printf("Updated Time: %f\n", (float)(virtual.seconds + (float)(virtual.nanoseconds/1000000000)));
+                printf("Updated Time: %f\n", (float)((float)virtual.seconds + (float)(virtual.nanoseconds/1000000000)));
+                printf("-----------------------------------------\n");
             }
 
         }else{

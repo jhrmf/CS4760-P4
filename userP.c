@@ -1,23 +1,36 @@
 #include "sharedMem.h"
 
+struct myTime updateTimeAfterDifference(struct myTime virtual, float difference){
+    while(difference != 0){
+        if(difference >= 1){
+            virtual.seconds++;
+            difference--;
+        }
+        else{
+            virtual.nanoseconds += difference;
+            break;
+        }
+    }
+    return virtual;
+}
+
 struct myTime updateLocal(struct myTime temp){
-    temp.nanoseconds += 1000;
+    temp.nanoseconds = temp.nanoseconds + 10000;
     if(temp.nanoseconds >= 1000000000){
         temp.seconds++;
-        temp.nanoseconds -= 1000000000;
+        temp.nanoseconds = temp.nanoseconds - 1000000000;
     }
     return temp;
 }
 
 void work(struct BLOCK *table, float quantum){
     srand(time(0));
-    struct myTime local;
     local.seconds = 0;
     local.nanoseconds = 0;
     int job = getRandom(3, 0);
     printf("Job: %d \n", job);
     if(job == 0){
-        printf("Process terminating at %d : %f\n", getSeconds(), getNano());
+        printf("Process terminating at %f\n", (float)((float)getSeconds() + getNano()));
     }
     if(job == 1){
         while(1){
@@ -34,26 +47,29 @@ void work(struct BLOCK *table, float quantum){
         int currentSecond = local.seconds;
         float currentNano = local.nanoseconds/1000000000;
         while(1){
-            local = updateLocal(local);
             if(((local.seconds + local.nanoseconds) - (float)(currentSecond + currentNano)) >= difference){
                 printf("Waited for event that lasted %f\n", difference);
+                updateTimeAfterDifference(local, difference);
+                //block
                 break;
             }
+            local = updateLocal(local);
         }
     }
     if(job == 3){
         int p = getRandom(100, 1);
         float localCheck;
         while(1){
-            local = updateLocal(local);
-            localCheck = (float)(local.seconds + (float)(local.nanoseconds/1000000000));
+            localCheck = (float)((float)local.seconds + (float)(local.nanoseconds/1000000000));
             if(localCheck >= (float)((float)(p*quantum)/100)){
-                //block
+                printf("Local: %f | Quantum Percentage: %f\n", localCheck, (float)((float)(p*quantum)/100));
                 break;
             }
+            local = updateLocal(local);
         }
     }
-    message.timeQuantum = (float)(local.seconds + (float)(local.nanoseconds/1000000000));
+
+    message.timeQuantum = (float)((float)local.seconds + (float)(local.nanoseconds/1000000000));
 
 }
 
