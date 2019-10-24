@@ -1,6 +1,42 @@
 #include "sharedMem.h"
 #include "queue.h"
 
+int openBit(unsigned char * bitMap, int lastPid){
+    lastPid++;
+    if(lastPid > 17){
+        lastPid = 0;
+    }
+    int tempPid = lastPid;
+    while(1){
+        if((bitMap[lastPid/8] & (1 << (lastPid % 8 ))) == 0){
+            /*bit has not been set yet*/
+            return lastPid;
+        }
+
+        lastPid++;
+        if(lastPid > 17){
+            lastPid = 0;
+        }
+        if( lastPid == tempPid){
+            return -1;
+        }
+
+    }
+}
+
+
+//Just flips the bit to 1  in the given bitmap
+//at the given lastPid.
+void setBit(unsigned char * bitMap, int lastPid){
+    bitMap[lastPid/8] |= (1<<(lastPid%8));
+}
+
+//Just flips the bit to 0 in the given bitmap and given LastPid
+void resetBit(unsigned char * bitMap, int finPid){
+    bitMap[finPid/8] &= ~(1 << (finPid % 8));
+
+}
+
 struct myTime updateTimeAfterProcess(struct myTime virtual, float quantum){
     while(quantum != 0){
         if(quantum >= 1){
@@ -8,7 +44,7 @@ struct myTime updateTimeAfterProcess(struct myTime virtual, float quantum){
             quantum--;
         }
         else{
-            virtual.nanoseconds += quantum;
+            virtual.nanoseconds += (quantum*1000000000);
             break;
         }
     }
@@ -62,6 +98,9 @@ static void myhandler(int s) {                                    //handler for 
     shmctl(shmget(65, 1024, 0666), IPC_RMID, NULL);                                               //delete shared memory
     shmctl(shmget(68, 1024, 0666), IPC_RMID, NULL);                                               //delete shared memory
     msgctl(msgid, IPC_RMID, NULL);
+    system("killall userP");
+    system("killall oss");
+    printf("Killed By Signal After %d seconds\n", s);
     exit(0);                                                           //close program in its tracks after timer expires
     errno = errsave;
 }
@@ -82,7 +121,12 @@ static int setupitimer(int n) {                                             /* s
 
 int main(int argc, char *argv[]) {
 
-    struct Queue *waiting = createQueue();
+    char unsigned  bitMap[3];
+    memset(bitMap, '\0', sizeof(bitMap));
+    int lastPid = -1;
+
+    struct Queue* zero = createQueue();
+
     int timeInSec = 10;                                                               //default timer is set to 5 seconds
     int maxChildren = 5;                                                       //default max child processes is set to 5
     int i = 0;
@@ -115,58 +159,67 @@ int main(int argc, char *argv[]) {
     printf("CPU Time for other is %d\n", test[1].CPUTime);
     shmctl(dataId, IPC_RMID, NULL);
 */
+    float pLaunch = (float)(getRandom(maxTimeBetweenNewProcsSecs, 0) + (float)(getRandom(maxTimeBetweenNewProcsNS, 0)/1000000000));
     int msgid;
-    while(virtual.seconds < 5 && childCount <= 100){   //this do while loop ends if seconds < 3 or 100 children exist
+    while(virtual.seconds < 1000 && i <= 100){   //this do while loop ends if seconds < 3 or 100 children exist
         tempTime = updateClock(tempTime);
         float checkTime = tempTime.seconds + ((float)tempTime.nanoseconds/1000000000);
-        if(checkTime >= (float)(getRandom(maxTimeBetweenNewProcsSecs, 0) + (float)(getRandom(maxTimeBetweenNewProcsNS, 0)/1000000000))) {
-            printf("Launched at %f!\n", checkTime);
+        if(checkTime >= pLaunch) {
+            if(i < 17){
+                lastPid = openBit(bitMap, lastPid);
+                if(lastPid != -1){
+                    setBit(bitMap, lastPid);
+                    table = shmat(dataId, NULL, 0);
+                    table[lastPid].CPUTime = 0.0;
+                    table[lastPid].sysTime = (float)((float)virtual.seconds + (float)(virtual.nanoseconds/1000000000));
+                    table[lastPid].burstTime = 0.0;
+                    table[lastPid].priority = 0;
+                    i++;
+                    int savedPid = 0;
+                    childPid = fork();
+                    if(childPid == 0){
+                        printf("Child created\n");
+                        table[lastPid].simPid = getpid();
+                        execl("./userP", NULL);
+                        exit(0);
+                    }
+                    enQueue(zero, lastPid);
+                    shmdt(table);
+
+                    pLaunch = checkTime + (float)(getRandom(maxTimeBetweenNewProcsSecs, 0) +
+                            (float)(getRandom(maxTimeBetweenNewProcsNS, 0)/1000000000));
+                    
+
+                }
+                else{
+                    printf("No available space\n");
+                    pLaunch += checkTime;
+                }
+
+            }
             tempTime.seconds = 0;
             tempTime.nanoseconds = 0;
+        }
+        else if(zero->front != NULL){
+            int pid = zero->front->key;
+            deQueue(zero);
+            i--;
+            key_t key = ftok("oss", 70);
+            msgid = msgget(key, 0666 | IPC_CREAT);
+            message.mesg_type = 1;
+            strcpy(message.mesg_text, "PROCESS ENTERED SYSTEM");
+            message.timeQuantum = 1.2;
+            message.pidToRun = pid;
+            msgsnd(msgid, &message, sizeof(message), 0);
 
-            if (i < 18) {
-                key_t key = ftok("oss", 70);
-                msgid = msgget(key, 0666 | IPC_CREAT);
-                message.mesg_type = 1;
-                strcpy(message.mesg_text, "PROCESS ENTERED SYSTEM");
-                message.timeQuantum = 1.2;
-                msgsnd(msgid, &message, sizeof(message), 0);
-                printf("----------NEW PROCESS----------\n");
-                childPid = fork();
-            }
+           /* */
 
-            if(childPid == 0){
-                table = shmat(dataId, NULL, 0);
-                table[i].CPUTime = 0.0;
-                table[i].sysTime = (float)((float)virtual.seconds + (float)(virtual.nanoseconds/1000000000));
-                table[i].burstTime = 0.0;
-                table[i].simPid = getpid();
-                shmdt(table);
-                enqueue(waiting, table[i].simPid);
-                execl("./userP", NULL);
-                exit(0);
-            }
-            else{
-                i++;
-                sleep(1);
-                while (strcmp(message.mesg_text, "sent") == 0 && virtual.nanoseconds <= 10) {
-                    msgrcv(msgid, &message, sizeof(message), 1, 0);
-                    virtual.nanoseconds++;
-                    if(virtual.nanoseconds >= 1000000000){
-                        virtual.nanoseconds -= 1000000000;
-                        virtual.seconds++;
-                    }
-                }
-                printf("Time Prior to Process: %f \n",(float)((float)virtual.seconds + (float)(virtual.nanoseconds/1000000000)));
-                printf("Time of Process: %f\n", message.timeQuantum);
-                virtual = updateTimeAfterProcess(virtual, message.timeQuantum);
-                printf("Updated Time: %f\n", (float)((float)virtual.seconds + (float)(virtual.nanoseconds/1000000000)));
-                printf("-----------------------------------------\n");
-            }
 
-        }else{
+        }
+        else{
             virtual = updateClock(virtual);
         }
+
     }
 
     shmctl(secID, IPC_RMID, NULL);                                                //delete the shared memory for seconds

@@ -32,6 +32,7 @@ struct myTime{                                                                  
 struct mesg_buffer {
     long mesg_type;
     float timeQuantum;
+    int pidToRun;
     char mesg_text[100];
 } message;
 
@@ -42,6 +43,7 @@ struct BLOCK
     float burstTime;
     int simPid;
     int job;
+    int priority;
     int run;
 
 };

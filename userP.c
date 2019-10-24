@@ -77,15 +77,23 @@ int main(int argc, char *argv[]){
     int msgid;
     key_t key = ftok("oss", 70);
     msgid = msgget(key, 0666);
-    msgrcv(msgid, &message, sizeof(message), 1, 0);
-    printf("Data Received is : %s \n",
-           message.mesg_text);
-    float quantum = message.timeQuantum;
-
     key_t dataKey = 68;
+    message.mesg_type = 1;
+
     int dataId = shmget(dataKey, 2048, 0666|IPC_CREAT);
-    table = shmat(dataId, NULL, 0);
-    work(table, quantum);
+    while(1){
+
+        msgrcv(msgid, &message, sizeof(message), 1, 0);
+        table = shmat(dataId, NULL, 0);
+
+        if(table[message.pidToRun].simPid == getpid()){
+            table[message.pidToRun].run = 1;
+            float quantum = message.timeQuantum;
+            work(table, quantum);
+            break;
+        }
+        shmdt(table);
+    }
     shmdt(table);
     strcpy(message.mesg_text, "received");
     msgsnd(msgid, &message, sizeof(message), 0);
