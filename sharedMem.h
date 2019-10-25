@@ -28,15 +28,14 @@ struct myTime{                                                                  
     int nanoseconds;
 };
 
-struct mesg_buffer {
+struct mesg_buffer {                                                                      //struct for the message queue
     long mesg_type;
     float timeQuantum;
     int pidToRun;
-    int run;
     char mesg_text[100];
 } message;
 
-struct BLOCK
+struct BLOCK                                                         //struct for the process table required for project
 {
     float CPUTime;
     float sysTime;
@@ -49,11 +48,11 @@ struct BLOCK
 };
 
 struct myTime virtual;                                                             //struct for holding the virtual time
-struct myTime tempTime;
-struct myTime local;
-struct BLOCK *table;
+struct myTime tempTime;                                                          //struct for holding the temporary time
+struct myTime local;                                                                //struct for the local time in userP
+struct BLOCK *table;                                                 //struct for the process table required for project
 
-const int getRandom(const int max, const int min){
+const int getRandom(const int max, const int min){            //function for getting a random number between max and min
     int randomNumber = ((rand() % (max + 1 - min)) + min);
     return randomNumber;
 }

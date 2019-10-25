@@ -17,8 +17,8 @@ float getNano(){                            //function for retrieving the nanose
     return nano;
 }
 
-struct myTime updateTimeAfterDifference(struct myTime virtual, float difference){
-    while(difference != 0){
+struct myTime updateTimeAfterDifference(struct myTime virtual, float difference){           //function for updating time
+    while(difference != 0){                                                    //for the distance calculation used below
         if(difference >= 1){
             virtual.seconds++;
             difference--;
@@ -31,7 +31,7 @@ struct myTime updateTimeAfterDifference(struct myTime virtual, float difference)
     return virtual;
 }
 
-struct myTime updateLocal(struct myTime temp){
+struct myTime updateLocal(struct myTime temp){                                    //function for updating the local time
     temp.nanoseconds = temp.nanoseconds + 30000;
     if(temp.nanoseconds >= 1000000000){
         temp.seconds++;
@@ -40,20 +40,20 @@ struct myTime updateLocal(struct myTime temp){
     return temp;
 }
 
-int work(struct BLOCK *table, float quantum){
+int work(struct BLOCK *table, float quantum){                          //function for handling the "work" a process does
     int end = 1;
     srand(time(0));
     local.seconds = 0;
     local.nanoseconds = 0;
-    int job = getRandom(100, 0);
-    if(job < 5){
+    int job = getRandom(100, 0);            //get a random number between 0 and 100 to decide what work the process does
+    if(job < 5){                                          //give the process a 5% chance of ending instead of doing work
         job = 0;
         end = 2;
     }
-    else if(job < 30){
+    else if(job < 30){                           //give the process a 25% chance for job 2 which would result in a block
         job = 2;
     }
-    else if(job < 65){
+    else if(job < 65){                                     //give the process a 35% chance for jobs 1 and 3 respectively
         job = 1;
     }
     else{
@@ -61,35 +61,36 @@ int work(struct BLOCK *table, float quantum){
     }
 
 
-    printf("Job: %d \n", job);
-    if(job == 0){
+    printf("Executing job: %d \n", job);                                   //print out to console the job being executed
+    if(job == 0){                                                             //job 0 adds 5000 nanoseconds for overhead
         local.nanoseconds += 5000;
         printf("Process terminating at %f\n", (float)((float)getSeconds() + getNano()));
     }
-    if(job == 1){
+    if(job == 1){                                                                             //run for the time quantum
         while(1){
             local = updateLocal(local);
-            if((float)(local.seconds + (float)((float)local.nanoseconds/1000000000)) >= quantum){
+            if((float)((float)local.seconds + (float)((float)local.nanoseconds/1000000000)) >= quantum){
                 break;
             }
         }
     }
-    if(job == 2){
+    if(job == 2){                                                              //run for a certain random amount of time
         int r = getRandom(5, 0);
         int s = getRandom(1000, 0);
         float difference = ((float)r + ((float)s / 10000));
         int currentSecond = local.seconds;
         float currentNano = local.nanoseconds/1000000000;
         while(1){
-            if(((local.seconds + local.nanoseconds) - (float)(currentSecond + currentNano)) >= difference){
+            if(((float)((float)local.seconds + local.nanoseconds) -
+                    (float)((float)currentSecond + currentNano)) >= difference){
                 updateTimeAfterDifference(local, difference);
-                //block
+                                                                            //block would occur here but not implemented
                 break;
             }
-            local = updateLocal(local);
+            local = updateLocal(local);                                                              //update local time
         }
     }
-    if(job == 3){
+    if(job == 3){                                                          //run for certain percent of the time quantum
         int p = getRandom(100, 1);
         float localCheck;
         while(1){
@@ -97,43 +98,52 @@ int work(struct BLOCK *table, float quantum){
             if(localCheck >= (float)((float)(p*quantum)/100)){
                 break;
             }
-            local = updateLocal(local);
+            local = updateLocal(local);                                                              //update local time
         }
     }
 
-    message.timeQuantum = (float)((float)local.seconds + (float)((float)local.nanoseconds/1000000000));
-    table[message.pidToRun].CPUTime = (float)((float)local.seconds + (float)((float)local.nanoseconds/1000000000));
-    table[message.pidToRun].run = 1;
+    message.timeQuantum = (float)((float)local.seconds +
+            (float)((float)local.nanoseconds/1000000000));                    //update the time quantum in message queue
+    table[message.pidToRun].CPUTime = (float)((float)local.seconds +
+            (float)((float)local.nanoseconds/1000000000));                                     //update the process time
+    table[message.pidToRun].run = 1;                                                          //set table run value to 1
     return end;
 }
 
 int main(int argc, char *argv[]){
-    int msgid;
-    key_t key = ftok("oss", 70);
-    msgid = msgget(key, 0666);
-    key_t dataKey = 68;
-    message.mesg_type = 1;
-    int end;
-    int dataId = shmget(dataKey, 2048, 0666|IPC_CREAT);
-    while(1){
 
-        msgrcv(msgid, &message, sizeof(message), 1, 0);
-        table = shmat(dataId, NULL, 0);
-        /*if(table[message.pidToRun].simPid != getpid()){
-            printf("WAITING     %d and %d\n", table[message.pidToRun].simPid, getpid());
-        }*/
-        if(table[message.pidToRun].simPid == getpid()){
-            float quantum = message.timeQuantum;
-            table[message.pidToRun].burstTime = (float)(getSeconds() + getNano());
-            end = work(table, quantum);
-            break;
+    int msgid;                                                                                //id for the message queue
 
+    key_t killedKey = 30;                                             //key for the shared memory that holds process end
+    int killID = shmget(killedKey, 2048, 0666|IPC_CREAT);                                        //get the shared memory
+
+    key_t key = ftok("oss", 70);                                                             //key for the message queue
+    msgid = msgget(key, 0666);                                                                   //get the message queue
+
+    key_t dataKey = 68;                                                             //key for the table in shared memory
+    message.mesg_type = 1;                                                                  //set the shared memory type
+
+    int end = 0;
+    int dataId = shmget(dataKey, 2048, 0666|IPC_CREAT);                                //get the shared memory for table
+    while(end == 0){                                                                                    //until end == 0
+        char *killStr = (char *) shmat(killID, (void *) 0, 0);       //ptr to the shared memory location for process end
+        strcpy(killStr, "Alive");                                 //copy the word Alive to the process end shared memory
+        msgrcv(msgid, &message, sizeof(message), 1, 0);                           //receive the message in message queue
+        table = shmat(dataId, NULL, 0);                                           //attach to the table in shared memory
+        if(table[message.pidToRun].simPid == getpid()){       //if the pid for the process scheduled is the same as ours
+            float quantum = message.timeQuantum;                                                  //get the time quantum
+            table[message.pidToRun].burstTime = (float)(getSeconds() + getNano());                  //set the burst time
+            end = work(table, quantum);                                        //set end to the value returned from work
         }
-        shmdt(table);
+        shmdt(table);                                                      //detach from the shared memory for the table
+        shmdt(killStr);                                                    //detach from the shared memory for child end
     }
-   shmdt(table);
-    strcpy(message.mesg_text, "received");
-    msgsnd(msgid, &message, sizeof(message), 0);
+    char *killedStr = (char *) shmat(killID, (void *) 0, 0);                //ptr to the shared memory for the child end
+    strcpy(killedStr, "Killed");                                                  //write "Killed" to that shared memory
+    shmdt(killedStr);                                                      //detach from the shared memory for child end
+    shmdt(table);                                                          //detach from the shared memory for the table
+    strcpy(message.mesg_text, "received");                                       //change the message text to "received"
+    msgsnd(msgid, &message, sizeof(message), 0);                                                 //send the message back
 
     exit(0);
 }
